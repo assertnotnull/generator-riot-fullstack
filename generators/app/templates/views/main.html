@@ -1,0 +1,116 @@
+<% layout('base') %>
+<%- partial('header') %>
+
+<div class="container-fluid">
+    <loading></loading>
+    <affiliate></affiliate>
+</div>
+<div id='pausedisplay'>
+    <div class='centered'>
+        <p>Your account is in paused mode
+        <br/>and your current case
+        <br/>will be held for you for</p>
+        <timer></timer>
+    </div>
+</div>
+<div id='lostcase'>
+    <div class='centered'>
+        <p>Your account has no longer a current case
+        <br/> and it's back in the queue
+        <br/>Just click the button below to get a new case</p>
+        <p><button type='button' class='btn btn-lg btn-warning' onClick='window.location.reload()'>Get new case</button></p>
+    </div>
+</div>
+<alert></alert>
+<%- partial('footer') %>
+
+<%- bundle.vendor.scripts %>
+<%- bundle.tags.scripts %>
+<%- bundle.main.scripts %>
+<script>
+    socket = io.connect('http://'+window.location.hostname+':8090'); //global socket
+    loadingtags = [];
+    pausetags = [];
+    timertags = [];
+    affiliatetags = [];
+    alerttags = [];
+
+    loadingtags = riot.mount('loading');
+    alerttags = riot.mount('alert');
+    affiliatetags = riot.mount('affiliate', {affiliate:{}, username: '<%= user.username %>'});
+
+    pauseTime = <%= pauseTime %>;
+    idleTime = <%= idleTime %>;
+
+    socket.emit('accountinfo', {id: '<%= user.id %>', username: '<%= user.username %>', name: '<%= user.name %>'});
+
+    socket.on('case', function(data) {
+        affiliate = data;
+
+        affiliatetags[0].update({'affiliate' : data});
+        if (!_.isEmpty(affiliate)) {
+            affiliatetags[0].updateAudit(affiliate.id);
+            $('#actions button').removeAttr('disabled');
+            loadingtags[0].update({visible: false});
+            pausetags = riot.mount('pause');
+            timertags = riot.mount('timer');
+            idleOn();
+        }
+
+    });
+
+    socket.on('wait', function() {
+        loadingtags[0].update({visible: true});
+        affiliatetags[0].update({'affiliate' : {}});
+        affiliatetags[0].tags.audit.tabs[0].comments = [];
+        affiliatetags[0].tags.audit.tabs[1].activities = [];
+    });
+
+    var stopIdleMode = function () {
+        document.removeEventListener('mousemove', listenMouseMove, false);
+        document.removeEventListener('keydown', listenMouseMove, false);
+        timertags[0].stop();
+    };
+
+    var listenMouseMove = function() {
+        if (pausetags.length > 0) {
+            timertags[0].update({time: moment.duration(60, 'seconds')});
+        }
+    };
+
+    var idleOff = function() {
+        pausetags[0].pauseOn();
+    };
+
+    var idleOn = function() {
+        document.addEventListener('mousemove', listenMouseMove, false);
+        document.addEventListener('keydown', listenMouseMove, false);
+        timertags[0].start(idleTime, idleOff);
+        pausetags[0].update();
+    };
+
+    var pauseOver = function() {
+        console.log('do something after pause is over..');
+        socket.emit('free');
+        affiliatetags.forEach(function(tag) { //must unmount to clean child tags
+            tag.unmount();
+        });
+        $('#pausedisplay').hide();
+        $('#pausecomponent').hide();
+        $('#lostcase').show();
+    };
+
+    overlay = {
+        show: function() {
+            console.log('showing overlay');
+            $('#pausedisplay').show();
+            $('affiliate').hide();
+        },
+        hide: function() {
+            console.log('hiding overlay');
+            $('#pausedisplay').hide();
+            $('affiliate').show();
+        }
+    }
+
+</script>
